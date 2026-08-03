@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-import pandas_ta as ta
+import ta
 
 def add_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty or len(df) < 50:
@@ -8,33 +8,39 @@ def add_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
     
     df = df.copy()
     
-    df["EMA_9"] = ta.ema(df["Close"], length=9)
-    df["EMA_21"] = ta.ema(df["Close"], length=21)
-    df["SMA_50"] = ta.sma(df["Close"], length=50)
+    # Moving Averages
+    df["EMA_9"] = ta.trend.ema_indicator(df["Close"], window=9)
+    df["EMA_21"] = ta.trend.ema_indicator(df["Close"], window=21)
+    df["SMA_50"] = ta.trend.sma_indicator(df["Close"], window=50)
     
-    df["RSI"] = ta.rsi(df["Close"], length=14)
+    # RSI
+    df["RSI"] = ta.momentum.rsi(df["Close"], window=14)
     
-    bb = ta.bbands(df["Close"], length=20, std=2)
-    if bb is not None and not bb.empty:
-        df["BB_Upper"] = bb.iloc[:, 0]
-        df["BB_Middle"] = bb.iloc[:, 1]
-        df["BB_Lower"] = bb.iloc[:, 2]
-        df["BB_Width"] = (df["BB_Upper"] - df["BB_Lower"]) / df["BB_Middle"]
+    # Bollinger Bands
+    bb = ta.volatility.BollingerBands(df["Close"], window=20, window_dev=2)
+    df["BB_Upper"] = bb.bollinger_hband()
+    df["BB_Middle"] = bb.bollinger_mavg()
+    df["BB_Lower"] = bb.bollinger_lband()
+    df["BB_Width"] = (df["BB_Upper"] - df["BB_Lower"]) / df["BB_Middle"]
     
-    macd = ta.macd(df["Close"], fast=12, slow=26, signal=9)
-    if macd is not None and not macd.empty:
-        df["MACD"] = macd.iloc[:, 0]
-        df["MACD_Hist"] = macd.iloc[:, 1]
-        df["MACD_Signal"] = macd.iloc[:, 2]
+    # MACD
+    macd = ta.trend.MACD(df["Close"], window_slow=26, window_fast=12, window_sign=9)
+    df["MACD"] = macd.macd()
+    df["MACD_Signal"] = macd.macd_signal()
+    df["MACD_Hist"] = macd.macd_diff()
     
-    stoch = ta.stoch(df["High"], df["Low"], df["Close"], k=14, d=3, smooth_k=3)
-    if stoch is not None and not stoch.empty:
-        df["STOCH_K"] = stoch.iloc[:, 0]
-        df["STOCH_D"] = stoch.iloc[:, 1]
+    # Stochastic
+    stoch = ta.momentum.StochasticOscillator(df["High"], df["Low"], df["Close"], window=14, smooth_window=3)
+    df["STOCH_K"] = stoch.stoch()
+    df["STOCH_D"] = stoch.stoch_signal()
     
-    df["ATR"] = ta.atr(df["High"], df["Low"], df["Close"], length=14)
+    # ATR
+    df["ATR"] = ta.volatility.average_true_range(df["High"], df["Low"], df["Close"], window=14)
     
+    # Support & Resistance
     df = add_support_resistance(df)
+    
+    # Candlestick Patterns
     df = add_candlestick_patterns(df)
     
     return df
