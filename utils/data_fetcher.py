@@ -2,28 +2,44 @@ import pandas as pd
 import yfinance as yf
 import ccxt
 from datetime import datetime, timedelta
-import time
 
 def fetch_crypto_data(symbol: str, timeframe: str = "5m", limit: int = 300) -> pd.DataFrame:
+    """Try multiple sources for crypto data"""
+    
+    # Convert symbol format
+    base = symbol.replace("/USDT", "").replace("USDT", "")
+    
+    # ---------- Method 1: yfinance (most reliable on Render) ----------
     try:
-        exchange = ccxt.binance({
-            "enableRateLimit": True,
-            "options": {"defaultType": "spot"}
-        })
+        yf_symbol = f"{base}-USD"
+        interval_map = {"1m": "1m", "5m": "5m", "15m": "15m"}
+        interval = interval_map.get(timeframe, "5m")
         
-        if not symbol.endswith("/USDT") and "/" not in symbol:
-            symbol = f"{symbol}/USDT"
-            
-        ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+        period = "7d" if interval == "1m" else "60d"
+        
+        df = yf.download(yf_symbol, period=period, interval=interval, progress=False)
+        
+        if not df.empty:
+            df = df[["Open", "High", "Low", "Close", "Volume"]].copy()
+            df.columns = ["Open", "High", "Low", "Close", "Volume"]
+            df = df.tail(limit)
+            return df
+    except Exception as e:
+        print(f"yfinance failed: {e}")
+
+    # ---------- Method 2: ccxt with Bybit (backup) ----------
+    try:
+        exchange = ccxt.bybit({"enableRateLimit": True})
+        ohlcv = exchange.fetch_ohlcv(f"{base}/USDT", timeframe=timeframe, limit=limit)
         
         df = pd.DataFrame(ohlcv, columns=["timestamp", "Open", "High", "Low", "Close", "Volume"])
         df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
         df.set_index("timestamp", inplace=True)
-        df = df.astype(float)
-        return df
+        return df.astype(float)
     except Exception as e:
-        print(f"Error fetching crypto data for {symbol}: {e}")
-        return pd.DataFrame()
+        print(f"Bybit failed: {e}")
+
+    return pd.DataFrame()
 
 
 FOREX_YAHOO_MAP = {
@@ -43,29 +59,21 @@ def fetch_forex_data(symbol: str, timeframe: str = "5m", limit: int = 300) -> pd
     try:
         yahoo_symbol = FOREX_YAHOO_MAP.get(symbol, symbol.replace("/", "") + "=X")
         
-        interval_map = {
-            "1m": "1m",
-            "5m": "5m",
-            "15m": "15m"
-        }
+        interval_map = {"1m": "1m", "5m": "5m", "15m": "15m"}
         interval = interval_map.get(timeframe, "5m")
         
-        if interval == "1m":
-            period = "7d"
-        else:
-            period = "60d"
+        period = "7d" if interval == "1m" else "60d"
             
-        ticker = yf.Ticker(yahoo_symbol)
-        df = ticker.history(period=period, interval=interval)
+        df = yf.download(yahoo_symbol, period=period, interval=interval, progress=False)
         
         if df.empty:
             return pd.DataFrame()
         
         df = df[["Open", "High", "Low", "Close", "Volume"]].copy()
-        df = df.tail(limit)
-        return df
+        df.columns = ["Open", "High", "Low", "Close", "Volume"]
+        return df.tail(limit)
     except Exception as e:
-        print(f"Error fetching forex data for {symbol}: {e}")
+        print(f"Error fetching forex: {e}")
         return pd.DataFrame()
 
 
